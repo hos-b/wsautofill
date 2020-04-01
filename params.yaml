@@ -1,0 +1,22 @@
+leap-year: False
+start-date: "16.03"
+end-date: "15.04"
+hours: 60
+daily-average: 6
+daily-std: 2
+starting-weekday: "monday"
+
+skip-weekends: True
+skip-dates: ["17.03", "04.04"]
+
+start-of-day: 9.0
+end-of-day: 20.0
+lunch-break-start: 13.0
+lunch-break-end: 14.5
+
+file-name: "test.xlsx"
+date-column: "A"
+start-time-column: "B"
+end-time-column: "C"
+first-row: 14
+last-row: 34
