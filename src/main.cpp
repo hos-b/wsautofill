@@ -12,6 +12,7 @@ bool leap_year;
 // used for skipping weekends
 WeekDay starting_weekday;
 Date start_date, end_date;
+std::string year;
 // amount of hours to fill
 float hours;
 float avg_hour_per_day;
@@ -20,12 +21,12 @@ float hour_std;
 float day_start, day_end, lunch_break_start, lunch_break_end;
 
 // excel sheet stuff
-std::string file_name;
-std::string date_column;
-std::string start_column;
-std::string end_column;
+std::string input_filename;
+std::string output_filename;
+unsigned int date_column;
+unsigned int start_column;
+unsigned int end_column;
 unsigned int first_row;
-unsigned int last_row;
 /* initializes the global variables. to be replaced by a yaml read  */
 void Init() {
 	YAML::Node base = YAML::LoadFile("params.yaml");
@@ -33,6 +34,7 @@ void Init() {
 	leap_year = base["leap-year"].as<bool>();
 	start_date = Date(base["start-date"].as<std::string>());
 	end_date = Date(base["end-date"].as<std::string>());
+	year = base["year"].as<std::string>();
 	hours = base["hours"].as<float>();
 	avg_hour_per_day = base["daily-average"].as<float>();
 	hour_std = base["daily-std"].as<float>();
@@ -43,13 +45,14 @@ void Init() {
 	lunch_break_start = base["lunch-break-start"].as<float>();
 	lunch_break_end = base["lunch-break-end"].as<float>();
 
-	file_name = base["file-name"].as<std::string>();
-	date_column = base["date-column"].as<std::string>();
-	start_column = base["start-time-column"].as<std::string>();
-	end_column = base["end-time-column"].as<std::string>();
+	input_filename = base["input-file"].as<std::string>();
+	output_filename = base["output-file"].as<std::string>();
+	date_column = base["date-column"].as<int>();
+	start_column = base["start-time-column"].as<int>();
+	end_column = base["end-time-column"].as<int>();
 	first_row = base["first-row"].as<int>();
-	last_row = base["last-row"].as<int>();
-	
+	// last_row = base["last-row"].as<int>();
+
 	// filling out skip dates
 	YAML::Node sd_node = base["skip-dates"];
 	if (sd_node.IsSequence()) {
@@ -95,26 +98,25 @@ float GetRandomFloat(float avg_hour, float hstd) {
 	auto randn = std::rand() / static_cast<double>(RAND_MAX);
 	auto ret_val = avg_hour + hstd * (2 * randn - 1);
 	// limiting decimal to .0 or .5
-	unsigned int num_int = static_cast<unsigned int>(ret_val);
-	unsigned int num_frac = static_cast<unsigned int>(ret_val * 10) % 10;
+	int num_int = static_cast<int>(ret_val);
+	int num_frac = static_cast<int>(ret_val * 10) % 10;
 	if (num_frac >= 5)
 		return static_cast<float>(num_int) + 0.5f;
+	else if (num_frac <= -5)
+		return static_cast<float>(num_int) - 0.5f;
 	return static_cast<float>(num_int);
 }
-/* returns a probability based on the amount of days/hours/rows left */
-float GetFillProbability(unsigned int free_days, unsigned int free_rows, float remaining_hours) {
-	unsigned int criterion = std::min(free_days, free_rows);
-	float avg_hpd = remaining_hours / (criterion * 1.0f);
+/* returns a probability based on the amount of days/hours left */
+float GetFillProbability(unsigned int free_days, float remaining_hours) {
+	float avg_hpd = remaining_hours / (free_days * 1.0f);
 	return std::fmin(avg_hpd / avg_hour_per_day, 1.0f);
 }
 /* returns a random schedule based on the parameters */
 std::vector<std::pair<std::string, float>> GetRandomSchedule() {
 	std::vector<std::pair<std::string, float>> schedule;
 	float remaining_hours = hours;
-	// coin toss criteria
+	// coin toss criterion
 	unsigned int free_days = GetFreeDays();
-	unsigned int free_rows = last_row - first_row + 1;
-
 	size_t skip_index = 0;
 	auto weekday = starting_weekday;
 	for (Date current_date = start_date; current_date < end_date; ++current_date, ++weekday) {
@@ -126,7 +128,7 @@ std::vector<std::pair<std::string, float>> GetRandomSchedule() {
 			continue;
 		}
 		// (unfair) coin toss
-		if (std::rand() / (double)RAND_MAX < GetFillProbability(free_days, free_rows, remaining_hours)) {
+		if (std::rand() / (double)RAND_MAX < GetFillProbability(free_days, remaining_hours)) {
 			if (remaining_hours <= avg_hour_per_day) {
 				// fill the day with whatever's left
 				schedule.push_back(std::make_pair(current_date.ToString(), remaining_hours));
@@ -139,10 +141,9 @@ std::vector<std::pair<std::string, float>> GetRandomSchedule() {
 				schedule.push_back(std::make_pair(current_date.ToString(), hrs));
 				remaining_hours -= hrs;
 			}
-			free_rows--;
 		}
 		free_days--;
-		if (remaining_hours <= 0)
+		if (remaining_hours == 0)
 			break;
 	}
 	if (remaining_hours != 0) {
@@ -159,18 +160,75 @@ std::vector<std::pair<std::string, float>> GetRandomSchedule() {
 
 	return schedule;
 }
+std::string GetFormattedTime(float time) {
+	unsigned int num_int = static_cast<unsigned int>(time);
+	unsigned int num_frac = static_cast<unsigned int>(time * 10) % 10;
+
+	std::string ret;
+	if  (num_int >= 10)
+		ret = std::to_string(num_int);
+	else
+		ret = "0" + std::to_string(num_int);
+	if (num_frac == 5)
+		ret += ":30";
+	else
+		ret += ":00";
+
+	return ret;
+}
 int main (int argc, char** argv)
 {
 	(void)argc; (void)argv;
 	Init();
+	// std::srand(std::time(NULL));
 	std::srand(std::time(NULL));
 	std::vector<std::pair<std::string, float>> schedule = GetRandomSchedule();
 	// printing schedule
-	std::cout << "Schedule:" << std::endl;
-	for (auto& elem : schedule) {
-		std::cout << elem.first << "\t\t" << elem.second << std::endl;
+	std::cout << "schedule:" << std::endl;
+	for (auto& elem : schedule)
+		std::cout << elem.first << "." + year << "\t" << elem.second << std::endl;
+
+	xlnt::workbook wb;
+    wb.title("schedule");
+	// cannot edit some existing files due to known XLNT bug https://github.com/tfussell/xlnt/issues/436
+    // wb.load("input.xlsx");
+    auto sheet = wb.active_sheet();
+    std::cout << "creating spreadsheet..." << std::endl;
+	float hrs;
+	std::string date;
+	unsigned int row = 1;
+	// float morning_limit = lunch_break_start - day_start;
+	// float evening_limit = day_end - lunch_break_end;
+	for (unsigned int i = 0; i < schedule.size(); ++i) {
+		std::tie(date, hrs) = schedule[i];
+		float morning_start = day_start + GetRandomFloat(0.8f, 0.5); // returns 0, 0.5 or 1
+		// divide into two entries if it cuts into lunch break
+		if (morning_start + hrs > lunch_break_start) {
+			float morning_end = lunch_break_start + GetRandomFloat(0.0, 1.0f); // returns -0.5 0 or 0.5
+			float time_left = hrs - (morning_end - morning_start);
+			// if randomization fits the whole thing in the morning slot
+			if (time_left < 0) {
+				morning_end = morning_start + hrs;
+				time_left = 0;
+			}
+			sheet.cell(date_column, row).value(date + "." + year);
+			sheet.cell(start_column, row).value(GetFormattedTime(morning_start));
+			sheet.cell(end_column, row++).value(GetFormattedTime(morning_end));
+			// fill the evening slot
+			if (time_left != 0) {
+				float evening_start = lunch_break_end + GetRandomFloat(0.0f, 1.0f); // returns -0.5 0 or 0.5
+				float evening_end = evening_start + time_left;
+				sheet.cell(date_column, row).value(date + "." + year);
+				sheet.cell(start_column, row).value(GetFormattedTime(evening_start));
+				sheet.cell(end_column, row++).value(GetFormattedTime(evening_end));
+			}
+		} else {
+			sheet.cell(date_column, row).value(date + "." + year);
+			sheet.cell(start_column, row).value(GetFormattedTime(morning_start));
+			sheet.cell(end_column, row++).value(GetFormattedTime(morning_start + hrs));
+		}
 	}
-	// zeroing out the excel sheet
-	
+	wb.save(output_filename);
+    std::cout << "results saved to " << output_filename << std::endl;
 	// filling out the excel sheet
 }

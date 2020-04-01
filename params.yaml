@@ -1,8 +1,9 @@
-leap-year: False
+leap-year: False # not implemented
 start-date: "16.03"
 end-date: "15.04"
+year: "2020"
 hours: 60
-daily-average: 6
+daily-average: 5
 daily-std: 2
 starting-weekday: "monday"
 
@@ -14,9 +15,9 @@ end-of-day: 20.0
 lunch-break-start: 13.0
 lunch-break-end: 14.5
 
-file-name: "test.xlsx"
-date-column: "A"
-start-time-column: "B"
-end-time-column: "C"
+input-file: "test.xlsx" # commented out due to XLNT bug
+output-file: "output.xlsx"
+date-column: 1 # = A
+start-time-column: 2 # = B
+end-time-column: 3 # = C
 first-row: 14
-last-row: 34
